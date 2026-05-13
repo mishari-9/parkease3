@@ -1,40 +1,56 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import dynamic from "next/dynamic";
-import { MapPin, Navigation } from "lucide-react";
+import { Navigation } from "lucide-react";
 import { useMapStore } from "@/store/mapStore";
 import { ParkingLot, MapRegion } from "@/types";
 import { config } from "@/constants/config";
-import { motion, AnimatePresence } from "framer-motion";
 
-// Dynamically import Leaflet components (SSR incompatible)
-const MapContainer = dynamic(
-  () => import("react-leaflet").then((m) => m.MapContainer),
-  { ssr: false },
-);
-const TileLayer = dynamic(
-  () => import("react-leaflet").then((m) => m.TileLayer),
-  { ssr: false },
-);
-const Marker = dynamic(() => import("react-leaflet").then((m) => m.Marker), {
-  ssr: false,
-});
-const Popup = dynamic(() => import("react-leaflet").then((m) => m.Popup), {
-  ssr: false,
-});
-import { useMap } from "react-leaflet";
-import L from "leaflet";
+// Lazy-load Leaflet using dynamic import - prevents SSR window is not defined
+type LeafletMod = {
+  MapContainer: any;
+  TileLayer: any;
+  Marker: any;
+  Popup: any;
+  useMap: any;
+  L: any;
+};
 
-// Fix Leaflet default icon issue
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-});
+let leafletModule: LeafletMod | null = null;
+let leafletLoading: Promise<LeafletMod> | null = null;
+
+async function loadLeaflet(): Promise<LeafletMod> {
+  if (leafletModule) return leafletModule;
+  if (leafletLoading) return leafletLoading;
+
+  leafletLoading = (async () => {
+    const rl = await import("react-leaflet");
+    const L = await import("leaflet").then((m) => m.default);
+
+    if (typeof L.Icon.Default !== "undefined") {
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl:
+          "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+        iconUrl:
+          "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+        shadowUrl:
+          "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+      });
+    }
+
+    leafletModule = {
+      MapContainer: rl.MapContainer,
+      TileLayer: rl.TileLayer,
+      Marker: rl.Marker,
+      Popup: rl.Popup,
+      useMap: rl.useMap,
+      L,
+    };
+    return leafletModule;
+  })();
+
+  return leafletLoading;
+}
 
 interface ParkingMapProps {
   onLotSelect?: (lot: ParkingLot) => void;
@@ -42,57 +58,31 @@ interface ParkingMapProps {
   height?: string;
 }
 
-// Custom marker icon based on availability
-const createMarkerIcon = (
-  availableSlots: number,
-  totalSlots: number,
-  isSelected: boolean,
-) => {
-  const ratio = availableSlots / totalSlots;
-  let color: string;
-  if (ratio > 0.3) color = "#2ECC71";
-  else if (ratio > 0) color = "#F39C12";
-  else color = "#EF4444";
-
-  const size = isSelected ? 48 : 36;
-
+function makeMarkerIcon(
+  available: number,
+  total: number,
+  selected: boolean,
+  L: any,
+) {
+  const ratio = total > 0 ? available / total : 0;
+  const color = ratio > 0.3 ? "#2ECC71" : ratio > 0 ? "#F39C12" : "#EF4444";
+  const size = selected ? 48 : 36;
   return L.divIcon({
     className: "custom-marker",
-    html: `
-      <div style="
-        width: ${size}px;
-        height: ${size}px;
-        background: ${color};
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: ${isSelected ? 14 : 11}px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        border: ${isSelected ? "3px solid white" : "2px solid white"};
-        transition: all 0.3s ease;
-      ">${availableSlots > 0 ? availableSlots : "F"}</div>
-    `,
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:${selected ? 14 : 11}px;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:${selected ? "3px solid white" : "2px solid white"};">${available > 0 ? available : "F"}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
   });
-};
+}
 
-const MapUpdater: React.FC<{ region: MapRegion }> = ({ region }) => {
-  const map = useMap();
+function Updater({ region, lm }: { region: MapRegion; lm: LeafletMod }) {
+  const map = lm.useMap();
   useEffect(() => {
-    if (map) {
-      map.setView(
-        [region.latitude, region.longitude],
-        Math.round(region.latitudeDelta * 100),
-      );
-    }
+    if (map) map.setView([region.latitude, region.longitude], 16);
   }, [region, map]);
   return null;
-};
+}
 
 export const ParkingMap: React.FC<ParkingMapProps> = ({
   onLotSelect,
@@ -101,28 +91,16 @@ export const ParkingMap: React.FC<ParkingMapProps> = ({
 }) => {
   const { lots, region, userLocation, isLoading, selectLot, updateRegion } =
     useMapStore();
-  const [mapReady, setMapReady] = useState(false);
-  const mapRef = useRef<any>(null);
+  const [lm, setLm] = useState<LeafletMod | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setMapReady(true);
+    loadLeaflet()
+      .then(setLm)
+      .catch(() => setErr("Failed to load map"));
   }, []);
 
-  const handleRegionChange = useCallback(
-    (map: any) => {
-      const center = map.getCenter();
-      const bounds = map.getBounds();
-      updateRegion({
-        latitude: center.lat,
-        longitude: center.lng,
-        latitudeDelta: bounds.getNorthEast().lat - bounds.getSouthWest().lat,
-        longitudeDelta: bounds.getNorthEast().lng - bounds.getSouthWest().lng,
-      });
-    },
-    [updateRegion],
-  );
-
-  const handleLotClick = useCallback(
+  const handleClick = useCallback(
     (lot: ParkingLot) => {
       selectLot(lot);
       onLotSelect?.(lot);
@@ -130,25 +108,34 @@ export const ParkingMap: React.FC<ParkingMapProps> = ({
     [selectLot, onLotSelect],
   );
 
-  const handleLocateMe = useCallback(() => {
+  const handleLocate = useCallback(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const newRegion: MapRegion = {
+        (pos) =>
+          updateRegion({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             latitudeDelta: 0.02,
             longitudeDelta: 0.02,
-          };
-          updateRegion(newRegion);
-        },
-        (err) => console.warn("Geolocation error:", err),
+          }),
+        () => {},
         { enableHighAccuracy: true, timeout: 5000 },
       );
     }
   }, [updateRegion]);
 
-  if (!mapReady) {
+  if (err) {
+    return (
+      <div
+        className="flex items-center justify-center bg-gray-100 dark:bg-gray-800"
+        style={{ height }}
+      >
+        <p className="text-sm text-gray-500">{err}</p>
+      </div>
+    );
+  }
+
+  if (!lm) {
     return (
       <div
         className="flex items-center justify-center bg-gray-100 dark:bg-gray-800"
@@ -159,26 +146,29 @@ export const ParkingMap: React.FC<ParkingMapProps> = ({
     );
   }
 
+  const MC = lm.MapContainer;
+  const TL = lm.TileLayer;
+  const M = lm.Marker;
+  const P = lm.Popup;
+
   return (
     <div className="relative w-full" style={{ height }}>
-      <MapContainer
+      <MC
         center={[region.latitude, region.longitude]}
         zoom={16}
-        style={{ height: "100%", width: "100%", borderRadius: "0" }}
+        style={{ height: "100%", width: "100%" }}
         zoomControl={false}
-        ref={mapRef}
       >
-        <TileLayer
+        <TL
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url={config.map.tileUrl}
         />
-        <MapUpdater region={region} />
+        <Updater region={region} lm={lm} />
 
-        {/* User Location Marker */}
         {userLocation && (
-          <Marker
+          <M
             position={[userLocation.lat, userLocation.lng]}
-            icon={L.divIcon({
+            icon={lm.L.divIcon({
               className: "user-marker",
               html: '<div style="width:20px;height:20px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 0 4px rgba(59,130,246,0.3);"></div>',
               iconSize: [20, 20],
@@ -187,62 +177,52 @@ export const ParkingMap: React.FC<ParkingMapProps> = ({
           />
         )}
 
-        {/* Parking Lot Markers */}
         {lots.map((lot) => (
-          <Marker
+          <M
             key={lot.id}
             position={[lot.location.lat, lot.location.lng]}
-            icon={createMarkerIcon(
+            icon={makeMarkerIcon(
               lot.availableSlots,
               lot.totalSlots,
               lot.id === selectedLotId,
+              lm.L,
             )}
-            eventHandlers={{
-              click: () => handleLotClick(lot),
-            }}
+            eventHandlers={{ click: () => handleClick(lot) }}
           >
-            <Popup>
-              <div className="min-w-[200px]">
+            <P>
+              <div className="min-w-[180px]">
                 <h3 className="font-semibold text-sm">{lot.name}</h3>
                 <p className="text-xs text-gray-500 mt-1">
                   {lot.availableSlots}/{lot.totalSlots} available
                 </p>
                 <p className="text-xs font-medium text-blue-600 mt-1">
-                  {formatPrice(lot.pricePerHour)}/hr
+                  SAR {lot.pricePerHour.toFixed(2)}/hr
                 </p>
                 <button
-                  onClick={() => handleLotClick(lot)}
-                  className="mt-2 w-full text-xs bg-blue-600 text-white py-1.5 px-3 rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => handleClick(lot)}
+                  className="mt-2 w-full text-xs bg-blue-600 text-white py-1.5 px-3 rounded-lg hover:bg-blue-700"
                 >
                   View Details
                 </button>
               </div>
-            </Popup>
-          </Marker>
+            </P>
+          </M>
         ))}
-      </MapContainer>
+      </MC>
 
-      {/* Locate Me Button */}
       <button
-        onClick={handleLocateMe}
+        onClick={handleLocate}
         className="absolute bottom-6 right-4 z-[1000] bg-white dark:bg-gray-800 p-2.5 rounded-full shadow-lg hover:shadow-xl transition-all"
       >
         <Navigation size={20} className="text-blue-600" />
       </button>
 
-      {/* Loading Indicator */}
       {isLoading && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
-          <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-full shadow-lg text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-            <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
-            Loading parking lots...
-          </div>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-white dark:bg-gray-800 px-4 py-2 rounded-full shadow-lg text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
+          <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
+          Loading lots...
         </div>
       )}
     </div>
   );
 };
-
-function formatPrice(price: number) {
-  return `SAR ${price.toFixed(2)}`;
-}

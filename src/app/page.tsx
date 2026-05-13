@@ -12,7 +12,14 @@ import {
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ParkingMap } from "@/components/map/ParkingMap";
+
+const ParkingMap = dynamic(
+  () =>
+    import("@/components/map/ParkingMap").then((m) => ({
+      default: m.ParkingMap,
+    })),
+  { ssr: false },
+);
 import { useMapStore } from "@/store/mapStore";
 import { mockParkingLots } from "@/data/mockData";
 import { ParkingLot } from "@/types";
