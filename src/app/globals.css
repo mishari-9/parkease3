@@ -1,66 +1,108 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
-@layer base {
-    :root {
-        --background: 248 250 252;
-        --foreground: 30 41 59;
-        --primary: 26 111 191;
-        --primary-light: 232 244 253;
-        --card: 255 255 255;
-        --card-foreground: 30 41 59;
-        --border: 226 232 240;
-        --muted: 100 116 139;
-    }
+@theme {
+    --color-background: #f8fafc;
+    --color-foreground: #1e293b;
+    --color-primary: #1a6fbf;
+    --color-primary-light: #e8f4fd;
+    --color-card: #ffffff;
+    --color-card-foreground: #1e293b;
+    --color-border: #e2e8f0;
+    --color-muted: #64748b;
+    --color-dark-bg: #0f172a;
+    --color-dark-foreground: #f1f5f9;
+    --color-dark-card: #1e293b;
+    --color-dark-border: #334155;
+}
 
-    .dark {
-        --background: 15 23 42;
-        --foreground: 241 245 249;
-        --primary: 59 130 246;
-        --primary-light: 30 58 95;
-        --card: 30 41 59;
-        --card-foreground: 241 245 249;
-        --border: 51 65 85;
-        --muted: 100 116 139;
-    }
+/* Base styles */
+*,
+*::before,
+*::after {
+    border-color: #e2e8f0;
+}
 
-    * {
-        @apply border-gray-200 dark:border-gray-700;
-    }
+.dark *,
+.dark *::before,
+.dark *::after {
+    border-color: #334155;
+}
 
-    body {
-        @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
-        font-family:
-            "Inter",
-            system-ui,
-            -apple-system,
-            sans-serif;
+body {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family:
+        "Inter",
+        system-ui,
+        -apple-system,
+        sans-serif;
+}
+
+.dark body {
+    background-color: #0f172a;
+    color: #f1f5f9;
+}
+
+/* Component classes */
+.glass-effect {
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+}
+
+.dark .glass-effect {
+    background-color: rgba(15, 23, 42, 0.8);
+}
+
+.page-container {
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+    .page-container {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
     }
 }
 
-@layer components {
-    .glass-effect {
-        @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg;
-    }
-
+@media (min-width: 1024px) {
     .page-container {
-        @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+        padding-left: 2rem;
+        padding-right: 2rem;
     }
+}
 
-    .gradient-primary {
-        @apply bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-500 dark:to-blue-600;
-    }
+.gradient-primary {
+    background-image: linear-gradient(to right, #2563eb, #1d4ed8);
+}
 
-    .gradient-text {
-        @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400;
-    }
+.dark .gradient-primary {
+    background-image: linear-gradient(to right, #3b82f6, #2563eb);
+}
 
-    .card-hover {
-        @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
-    }
+.gradient-text {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(to right, #2563eb, #4f46e5);
+}
+
+.dark .gradient-text {
+    background-image: linear-gradient(to right, #60a5fa, #818cf8);
+}
+
+.card-hover {
+    transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
 }
 
 /* Leaflet overrides */
@@ -154,5 +196,36 @@
 
 /* Skeleton loading */
 .skeleton {
-    @apply bg-gray-200 dark:bg-gray-700 rounded animate-pulse;
+    background-color: #e5e7eb;
+    border-radius: 0.25rem;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.dark .skeleton {
+    background-color: #374151;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Safe area for mobile */
+.safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Hide scrollbar */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
 }
